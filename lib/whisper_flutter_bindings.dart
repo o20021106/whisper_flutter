@@ -105,12 +105,6 @@ class WhisperTranscriberBindings {
           'whisper_free_string');
   late final _whisper_free_string = _whisper_free_stringPtr
       .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
-
-  late final ffi.Pointer<ffi.Int> _WavReader = _lookup<ffi.Int>('WavReader');
-
-  int get WavReader => _WavReader.value;
-
-  set WavReader(int value) => _WavReader.value = value;
 }
 
 final class WhisperTranscriber extends ffi.Opaque {}

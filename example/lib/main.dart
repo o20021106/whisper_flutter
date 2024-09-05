@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
+import 'package:whisper_flutter/whisper_flutter.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:ffi' as ffi;
-import 'package:ffi/ffi.dart';
-import 'package:whisper_flutter/whisper_flutter_bindings.dart';
+import 'dart:io';
+import 'package:wav/wav.dart';
 
 void main() {
   runApp(const MyApp());
@@ -16,29 +15,23 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Whisper Flutter Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Whisper Flutter Example')),
+        body: const WhisperExample(),
       ),
-      home: const MyHomePage(title: 'Whisper Flutter Demo'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
-
-  final String title;
+class WhisperExample extends StatefulWidget {
+  const WhisperExample({Key? key}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _WhisperExampleState createState() => _WhisperExampleState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  late WhisperTranscriberBindings _bindings;
-  late ffi.Pointer<WhisperTranscriber> _transcriber;
-  String _transcription = '';
-  bool _isTranscribing = false;
+class _WhisperExampleState extends State<WhisperExample> {
+  final _whisper = WhisperFlutter();
 
   @override
   void initState() {
@@ -47,109 +40,68 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _initializeWhisper() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final modelPath = '${directory.path}/whisper-model.bin';
-
-    // Ensure that the model file is available at this path
-    // You might want to add code here to download the model if it doesn't exist
-
-    // Load the dynamic library
-    final dylib = ffi.DynamicLibrary.open(
-        'libwhisper_flutter.dylib'); // Update this to match your actual library name
-    _bindings = WhisperTranscriberBindings(dylib);
-
-    // Create and initialize the transcriber
-    final modelPathPointer = modelPath.toNativeUtf8();
-    _transcriber =
-        _bindings.whisper_transcriber_create(modelPathPointer.cast());
-    calloc.free(modelPathPointer);
-
-    final result = _bindings.whisper_transcriber_initialize(_transcriber);
-    if (result != 0) {
-      print('Whisper initialized successfully');
-    } else {
-      print('Failed to initialize Whisper');
-    }
-  }
-
-  Future<void> _transcribeAudio() async {
-    setState(() {
-      _isTranscribing = true;
-      _transcription = '';
-    });
-
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['wav'],
-      );
+      print('Initializing Whisper...');
+      final modelBytes = await rootBundle.load('assets/ggml-base.en.bin');
+      final directory = await getTemporaryDirectory();
+      final tempModelPath = '${directory.path}/temp_model.bin';
 
-      if (result != null) {
-        File file = File(result.files.single.path!);
-        List<double> audioData = await _readWavFile(file);
+      print('Writing model to temporary file: $tempModelPath');
+      await File(tempModelPath).writeAsBytes(modelBytes.buffer.asUint8List());
 
-        final audioDataPointer = calloc<ffi.Float>(audioData.length);
-        final audioDataArray = audioDataPointer.asTypedList(audioData.length);
-        audioDataArray.setAll(0, audioData);
-
-        final transcriptionPointer = _bindings.whisper_transcriber_transcribe(
-          _transcriber,
-          audioDataPointer,
-          audioData.length,
-        );
-
-        _transcription = transcriptionPointer.cast<Utf8>().toDartString();
-        _bindings.whisper_free_string(transcriptionPointer);
-        calloc.free(audioDataPointer);
-      } else {
-        _transcription = 'No file selected';
-      }
+      await _whisper.initialize(tempModelPath);
+      print('Whisper initialized successfully');
     } catch (e) {
-      _transcription = 'Error during transcription: $e';
-    } finally {
-      setState(() {
-        _isTranscribing = false;
-      });
+      print('Error initializing Whisper: $e');
     }
   }
 
-  Future<List<double>> _readWavFile(File file) async {
-    // This is a placeholder. You'll need to implement proper WAV file reading.
-    // The actual implementation will depend on the specific WAV format you're using.
-    // You might want to use a package like `wav` for this.
+  Future<List<double>> _readWavFile(String filePath) async {
+    final file = File(filePath);
     final bytes = await file.readAsBytes();
-    return bytes.map((e) => e.toDouble() / 255).toList();
+    final wav = await Wav.read(bytes);
+    final audioData = wav.channels.first;
+    return audioData.map((e) => e.toDouble()).toList();
+  }
+
+  Future<void> _transcribe() async {
+    try {
+      print('Starting transcription...');
+
+      final wavFileName = 'jfk.wav';
+      final directory = await getApplicationDocumentsDirectory();
+      final wavFilePath = '${directory.path}/$wavFileName';
+
+      if (!await File(wavFilePath).exists()) {
+        final byteData = await rootBundle.load('assets/$wavFileName');
+        await File(wavFilePath).writeAsBytes(byteData.buffer.asUint8List());
+      }
+
+      // Read WAV file
+      final audioData = await _readWavFile(wavFilePath);
+      print('Audio data length: ${audioData.length}');
+      print('Audio data length: ${audioData.length}');
+
+      final result = _whisper.transcribe(audioData);
+      print('Transcription result: $result');
+    } catch (e) {
+      print('Error during transcription: $e');
+    }
   }
 
   @override
   void dispose() {
-    _bindings.whisper_transcriber_free(_transcriber);
+    _whisper.dispose();
+    print('Whisper disposed');
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            ElevatedButton(
-              onPressed: _isTranscribing ? null : _transcribeAudio,
-              child:
-                  Text(_isTranscribing ? 'Transcribing...' : 'Select WAV File'),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Text(_transcription),
-              ),
-            ),
-          ],
-        ),
+    return Center(
+      child: ElevatedButton(
+        onPressed: _transcribe,
+        child: const Text('Transcribe'),
       ),
     );
   }
