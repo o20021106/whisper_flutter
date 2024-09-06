@@ -10,7 +10,7 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
 }
 
 class WhisperExample extends StatefulWidget {
-  const WhisperExample({Key? key}) : super(key: key);
+  const WhisperExample({super.key});
 
   @override
   _WhisperExampleState createState() => _WhisperExampleState();
@@ -59,7 +59,7 @@ class _WhisperExampleState extends State<WhisperExample> {
   Future<List<double>> _readWavFile(String filePath) async {
     final file = File(filePath);
     final bytes = await file.readAsBytes();
-    final wav = await Wav.read(bytes);
+    final wav = Wav.read(bytes);
     final audioData = wav.channels.first;
     return audioData.map((e) => e.toDouble()).toList();
   }
@@ -68,7 +68,7 @@ class _WhisperExampleState extends State<WhisperExample> {
     try {
       print('Starting transcription...');
 
-      final wavFileName = 'jfk.wav';
+      const wavFileName = 'jfk.wav';
       final directory = await getApplicationDocumentsDirectory();
       final wavFilePath = '${directory.path}/$wavFileName';
 
